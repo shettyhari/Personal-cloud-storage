@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* shadcn/ui-style design tokens (neutral palette, restrained blue accent) */
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0b;
+  --card: #ffffff;
+  --muted: #f4f4f5;
+  --muted-foreground: #66666e;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --accent: #2563eb;
+  --accent-soft: #eff4ff;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --sidebar: #fafafa;
+  --ring: #93b4f5;
+}
+.dark {
+  --background: #0b0b0d;
+  --foreground: #f4f4f5;
+  --card: #121215;
+  --muted: #1c1c21;
+  --muted-foreground: #a1a1aa;
+  --border: #27272d;
+  --input: #2e2e35;
+  --primary: #f4f4f5;
+  --primary-foreground: #0b0b0d;
+  --accent: #5b8def;
+  --accent-soft: #16213a;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #f05252;
+  --sidebar: #0e0e11;
+  --ring: #2f4f8f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+* { border-color: var(--border); }
+:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+::selection { background: var(--accent-soft); }
+.tabular { font-variant-numeric: tabular-nums; }

@@ -1,0 +1,14 @@
+.env
+.dev/
+server/.venv/
+server/.pytest-tmp/
+**/__pycache__/
+*.pyc
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+web/tsconfig.tsbuildinfo
+.claude/
+PersonalCloudOS.zip
+.pytest_cache/
