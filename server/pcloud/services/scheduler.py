@@ -35,6 +35,8 @@ class Scheduler:
 
     def run_once(self) -> None:
         auth.cleanup_sessions()
+        from ..cloudlink.link import cloud_link
+        cloud_link.start()  # picks up a link made with `pcloud link` while the server was running
         approvals.expire_old()
         fileops.purge_expired_trash()
         self._cleanup_uploads()

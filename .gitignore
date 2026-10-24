@@ -1,7 +1,7 @@
 .env
 .dev/
 server/.venv/
-server/.pytest-tmp/
+server/.pytest-tmp*/
 **/__pycache__/
 *.pyc
 web/node_modules/

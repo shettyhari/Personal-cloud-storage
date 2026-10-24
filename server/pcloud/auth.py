@@ -165,6 +165,24 @@ def token_principal(token: str, ip: str, kinds: set[str] | None = None) -> Princ
                      read_only=bool(row["read_only"]), ip=ip)
 
 
+# ------------------------------------------------------------ cloud tunnel
+TUNNEL_HEADER = "x-pcloud-tunnel"
+TUNNEL_USER_HEADER = "x-pcloud-tunnel-user"
+_TUNNEL_SECRET = secrets.token_urlsafe(32)
+
+
+def tunnel_headers(user_id: int) -> dict[str, str]:
+    return {TUNNEL_HEADER: _TUNNEL_SECRET, TUNNEL_USER_HEADER: str(user_id)}
+
+
+def tunnel_principal(user_id: int) -> Principal | None:
+    row = db.one("SELECT id, username, role, disabled FROM users WHERE id=?", (user_id,))
+    if row is None or row["disabled"]:
+        return None
+    return Principal(user_id=row["id"], username=row["username"], role=row["role"], via="tunnel",
+                     token_name="cloud", ip="cloud")
+
+
 # ---------------------------------------------------------- dependencies
 def optional_principal(request: Request) -> Principal | None:
     cached = getattr(request.state, "principal", None)
@@ -173,7 +191,16 @@ def optional_principal(request: Request) -> Principal | None:
     ip = client_ip(request)
     p = None
     auth = request.headers.get("authorization", "")
-    if auth.lower().startswith("bearer "):
+    tunnel = request.headers.get(TUNNEL_HEADER)
+    if tunnel is not None:
+        # In-process call from the cloud link (see cloudlink/tunnel.py); never reachable from the network
+        # because the secret only exists in this process's memory.
+        if not secrets.compare_digest(tunnel, _TUNNEL_SECRET):
+            raise HTTPException(401, "Invalid tunnel credentials")
+        p = tunnel_principal(int(request.headers.get(TUNNEL_USER_HEADER, "0")))
+        if p is None:
+            raise HTTPException(401, "The linked account no longer exists")
+    elif auth.lower().startswith("bearer "):
         p = token_principal(auth[7:].strip(), ip, kinds={"device", "api"})
     else:
         cookie = request.cookies.get(SESSION_COOKIE)

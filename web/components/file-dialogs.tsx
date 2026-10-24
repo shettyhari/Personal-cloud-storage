@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, Download, Folder, History, Home, Pencil, RotateCcw, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, downloadUrl, post, qs, type FileEntry, type Root } from "@/lib/api";
+import { CLOUD } from "@/lib/cloud";
+import { cloudDownload, cloudFileBlob } from "@/lib/cloud-transfer";
 import { bytes, date } from "@/lib/format";
 import { Button, Dialog, Empty, ErrorBox, Field, Input, Loading, Select, Spinner, Textarea, useToast } from "./ui";
 
@@ -21,8 +23,22 @@ export function PreviewDialog({ file, onClose, canWrite, onSaved }: { file: File
     enabled: !!file && isText,
   });
   useEffect(() => { setEditing(false); }, [file]);
+  const [cloudSrc, setCloudSrc] = useState<string>("");
+  const media = !!file && ["image", "video", "audio", "pdf"].includes(file.kind);
+  useEffect(() => {
+    if (!CLOUD || !file || !media) return;
+    let url = "";
+    let alive = true;
+    setCloudSrc("");
+    cloudFileBlob(file.root_id, file.path).then(({ blob }) => {
+      if (!alive) return;
+      url = URL.createObjectURL(blob);
+      setCloudSrc(url);
+    }).catch((e) => toast("error", (e as Error).message));
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [file, media, toast]);
   if (!file) return null;
-  const src = downloadUrl(file.root_id, file.path, true);
+  const src = CLOUD ? cloudSrc : downloadUrl(file.root_id, file.path, true);
   const editable = canWrite && TEXT_KINDS.has(file.kind) && file.size < 5 * 1024 * 1024;
   const save = async () => {
     setSaving(true);
@@ -37,10 +53,13 @@ export function PreviewDialog({ file, onClose, canWrite, onSaved }: { file: File
       footer={<>
         {editable && !editing && <Button variant="outline" onClick={() => { setDraft(text.data || ""); setEditing(true); }}><Pencil className="h-4 w-4" />Edit</Button>}
         {editing && <Button onClick={save} loading={saving}><Save className="h-4 w-4" />Save</Button>}
-        <a href={downloadUrl(file.root_id, file.path)}><Button variant="outline"><Download className="h-4 w-4" />Download</Button></a>
+        {CLOUD
+          ? <Button variant="outline" onClick={() => cloudDownload(file.root_id, file.path).catch((e) => toast("error", (e as Error).message))}><Download className="h-4 w-4" />Download</Button>
+          : <a href={downloadUrl(file.root_id, file.path)}><Button variant="outline"><Download className="h-4 w-4" />Download</Button></a>}
       </>}>
       <div className="flex max-h-[70vh] min-h-[200px] items-center justify-center overflow-auto rounded-md bg-muted/50">
-        {file.kind === "image" ? <img src={src} alt={file.name} className="max-h-[68vh] max-w-full object-contain" />
+        {CLOUD && media && !cloudSrc ? <Spinner />
+          : file.kind === "image" ? <img src={src} alt={file.name} className="max-h-[68vh] max-w-full object-contain" />
           : file.kind === "video" ? <video src={src} controls className="max-h-[68vh] max-w-full" />
           : file.kind === "audio" ? <audio src={src} controls className="w-full" />
           : file.kind === "pdf" ? <iframe src={src} title={file.name} className="h-[68vh] w-full rounded-md bg-white" />
@@ -161,7 +180,7 @@ export function VersionsDialog({ file, onClose, canWrite, onDone }: { file: File
           {q.data.map((v) => (
             <li key={v.id} className="flex items-center gap-3 px-3 py-2 text-sm">
               <div className="flex-1"><div>{date(v.mtime)}</div><div className="text-xs text-muted-foreground">{bytes(v.size)} · saved {date(v.created_at)} · {v.reason}</div></div>
-              <a href={`/api/files/versions/${v.id}/download?${qs({ root_id: file.root_id })}`}><Button size="sm" variant="ghost"><Download className="h-4 w-4" /></Button></a>
+              {!CLOUD && <a href={`/api/files/versions/${v.id}/download?${qs({ root_id: file.root_id })}`}><Button size="sm" variant="ghost"><Download className="h-4 w-4" /></Button></a>}
               {canWrite && <Button size="sm" variant="outline" onClick={() => restore(v)}><RotateCcw className="h-4 w-4" />Restore</Button>}
             </li>
           ))}

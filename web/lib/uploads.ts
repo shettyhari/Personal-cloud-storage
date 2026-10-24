@@ -1,5 +1,7 @@
 // Chunked, resumable uploads with automatic retry. State is a tiny external store used via useSyncExternalStore.
 import { api, ApiError } from "./api";
+import { CLOUD } from "./cloud";
+import { cloudUpload } from "./cloud-transfer";
 
 export type UploadItem = {
   key: string; name: string; size: number; sent: number; status: "queued" | "uploading" | "verifying" | "done" | "error" | "cancelled";
@@ -70,6 +72,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function run(t: Task) {
   const { file, item } = t;
   item.startedAt = Date.now();
+  if (CLOUD) return runCloud(t);
   let attempt = 0;
   while (true) {
     try {
@@ -116,6 +119,40 @@ async function run(t: Task) {
       }
       item.status = "error";
       item.error = err.message || "Upload failed";
+      return;
+    }
+  }
+}
+
+async function runCloud(t: Task) {
+  const { file, item } = t;
+  let attempt = 0;
+  while (true) {
+    try {
+      const t0 = performance.now();
+      await cloudUpload(file, item.rootId, item.dir, t.overwrite, (sent) => {
+        item.sent = sent;
+        item.speed = sent / Math.max(0.001, (performance.now() - t0) / 1000);
+        if (sent >= file.size) item.status = "verifying";
+        emit();
+      }, () => t.cancel);
+      item.status = "done";
+      item.sent = file.size;
+      onDone.forEach((fn) => fn(item));
+      return;
+    } catch (e) {
+      if (t.cancel) { item.status = "cancelled"; return; }
+      const err = e as ApiError;
+      if (attempt < 5 && (err.status === undefined || err.status === 0 || err.status >= 500)) {
+        attempt++;
+        item.error = `Connection problem - retrying (${attempt})`;
+        emit();
+        await sleep(Math.min(30000, 2000 * 2 ** attempt));
+        item.error = undefined;
+        continue;
+      }
+      item.status = "error";
+      item.error = (e as Error).message || "Upload failed";
       return;
     }
   }

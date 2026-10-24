@@ -1,0 +1,5 @@
+{
+  "_comment": "Public values for the hosted (cloud) build. The publishable key is designed to be public; access is enforced by Row Level Security + 2FA in Supabase.",
+  "supabaseUrl": "https://ajfpobrjjhsxenruldyf.supabase.co",
+  "supabasePublishableKey": "sb_publishable_GgQnREX4b-XdW7RsgNs1Og_MqAI0jK1"
+}

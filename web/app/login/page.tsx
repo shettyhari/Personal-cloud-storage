@@ -3,8 +3,14 @@ import { Cloud } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, post, setCsrf } from "@/lib/api";
 import { Button, Card, ErrorBox, Field, Input } from "@/components/ui";
+import { CloudLogin } from "@/components/cloud-login";
+import { CLOUD } from "@/lib/cloud";
 
 export default function LoginPage() {
+  return CLOUD ? <CloudLogin /> : <LocalLogin />;
+}
+
+function LocalLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");

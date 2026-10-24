@@ -1,4 +1,6 @@
 // Typed client for the home PC agent. Same-origin: the dashboard is served by the agent itself.
+// In the hosted build (CLOUD) the same calls are relayed to the selected server (lib/cloud.ts).
+import { CLOUD, CloudError, serverApi } from "./cloud";
 
 let csrf: string | null = null;
 export const setCsrf = (t: string | null) => { csrf = t; };
@@ -21,6 +23,15 @@ export async function api<T = unknown>(path: string, opts: RequestInit & { json?
   const headers = new Headers(opts.headers);
   if (opts.json !== undefined) headers.set("content-type", "application/json");
   const method = (opts.method || (opts.json !== undefined ? "POST" : "GET")).toUpperCase();
+  if (CLOUD && path.startsWith("/api/")) {
+    // Hosted dashboard: the call goes to the selected server through the encrypted relay.
+    try {
+      return await serverApi<T>(method, path, opts.json);
+    } catch (e) {
+      if (e instanceof CloudError) throw new ApiError(e.status, e.message, e.body);
+      throw e;
+    }
+  }
   if (method !== "GET" && method !== "HEAD" && csrf) headers.set("x-csrf-token", csrf);
   let res: Response;
   try {

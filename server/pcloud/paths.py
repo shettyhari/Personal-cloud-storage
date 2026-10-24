@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 
@@ -141,10 +142,40 @@ def rel_of(root: Root, abs_path: str) -> str:
 
 
 # ------------------------------------------------------------- root safety
+# Linux / macOS system trees that may never become a storage root (the tree itself or anything inside it).
+_POSIX_BLOCKED_TREES = ("/etc", "/proc", "/sys", "/dev", "/boot", "/usr", "/bin", "/sbin", "/var/lib", "/var/log",
+                        "/run", "/root", "/System", "/Library", "/private", "/Applications")
+_POSIX_LIB = re.compile(r"^/lib(32|64|x32|exec)?(/|$)")  # /lib, /lib32, /lib64, /libx32, /libexec
+# Exact directories that hold other people's data; their subfolders are allowed.
+_POSIX_BLOCKED_EXACT = ("/", "/home", "/Users", "/var", "/srv", "/opt", "/mnt", "/media", "/Volumes", "/tmp")
+_POSIX_HOMES = re.compile(r"^/(home|Users)/[^/]+$")
+
+
+def _posix_forbidden_reason(p: str, home: str) -> str | None:
+    """Rules for Linux/macOS. `p` and `home` are absolute POSIX-style paths."""
+    p = p.rstrip("/") or "/"
+    if p == "/":
+        return "The whole filesystem cannot be shared. Choose a folder such as /srv/pcloud instead."
+    for b in _POSIX_BLOCKED_TREES:
+        if p == b or p.startswith(b + "/"):
+            return f"System folder {b} cannot be shared."
+    if _POSIX_LIB.match(p):
+        return "System library folders cannot be shared."
+    if p == (home.rstrip("/") or "/") or _POSIX_HOMES.match(p):
+        return "A whole home directory cannot be shared. Pick specific folders inside it instead."
+    if p in _POSIX_BLOCKED_EXACT:
+        return f"{p} itself cannot be shared. Pick a folder inside it (e.g. /srv/pcloud)."
+    return None
+
+
 def _forbidden_root_reason(path: Path) -> str | None:
     cfg = get_config()
     p = os.path.normcase(str(path))
-    if path.parent == path:
+    if sys.platform != "win32":
+        reason = _posix_forbidden_reason(path.as_posix(), Path.home().as_posix())
+        if reason:
+            return reason
+    elif path.parent == path:
         return "Whole drives cannot be shared. Choose a folder on the drive instead (e.g. D:\\PersonalCloud)."
     sysroot = os.environ.get("SystemRoot", r"C:\Windows")
     blocked = [sysroot, os.environ.get("ProgramFiles", r"C:\Program Files"),
@@ -166,7 +197,7 @@ def check_new_root(path_str: str) -> Path:
         raise PathError("Folder path is required")
     path = Path(path_str.strip()).expanduser()
     if not path.is_absolute():
-        raise PathError("Use a full path such as D:\\PersonalCloud")
+        raise PathError("Use a full path such as " + ("D:\\PersonalCloud" if sys.platform == "win32" else "/srv/pcloud"))
     path = Path(os.path.realpath(path))
     reason = _forbidden_root_reason(path)
     if reason:

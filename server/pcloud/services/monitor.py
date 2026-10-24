@@ -103,6 +103,8 @@ class Monitor:
                                    "size": d.get("Size")})
             except Exception as e:
                 log.debug("disk health failed: %s", e)
+        elif sys.platform.startswith("linux"):
+            result = _linux_disk_health()
         self._disk_health_cache = (time.time(), result)
         return result
 
@@ -160,3 +162,39 @@ class Monitor:
 
 
 monitor = Monitor()
+
+
+def _linux_disk_health() -> list[dict]:
+    """Physical disks via lsblk, with SMART overall health when smartctl is installed and permitted."""
+    if not shutil.which("lsblk"):
+        return []
+    try:
+        out = subprocess.run(["lsblk", "-J", "-b", "-d", "-o", "NAME,SIZE,TYPE,MODEL,STATE"],
+                             capture_output=True, text=True, timeout=10).stdout
+        devices = (json.loads(out) if out.strip() else {}).get("blockdevices") or []
+    except Exception as e:
+        log.debug("lsblk failed: %s", e)
+        return []
+    smartctl = shutil.which("smartctl")
+    result = []
+    for d in devices:
+        if d.get("type") != "disk":
+            continue
+        health = "Unknown"
+        if smartctl:
+            try:
+                smart = subprocess.run([smartctl, "-H", f"/dev/{d.get('name')}"], capture_output=True,
+                                       text=True, timeout=10).stdout
+                if "PASSED" in smart or ": OK" in smart:
+                    health = "Healthy"
+                elif "FAILED" in smart:
+                    health = "Unhealthy"
+            except Exception as e:
+                log.debug("smartctl failed: %s", e)
+        try:
+            size = int(d.get("size")) if d.get("size") is not None else None
+        except (TypeError, ValueError):
+            size = None
+        result.append({"name": (d.get("model") or "").strip() or d.get("name"), "media": d.get("type"),
+                       "health": health, "status": d.get("state") or "unknown", "size": size})
+    return result

@@ -2,10 +2,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { api, setCsrf, type Me } from "./api";
+import { CLOUD } from "./cloud";
+import { useSelectedServer, useSelectedServerId } from "./cloud-hooks";
 
 export function useMe() {
+  const sid = useSelectedServerId();
   return useQuery({
-    queryKey: ["me"],
+    queryKey: ["me", CLOUD ? sid : "local"],
+    enabled: !CLOUD || !!sid,
     queryFn: async () => {
       const me = await api<Me>("/api/auth/me");
       setCsrf(me.csrf);
@@ -19,6 +23,7 @@ export function useMe() {
 export function useServerOnline() {
   const q = useQuery({
     queryKey: ["health"],
+    enabled: !CLOUD,
     queryFn: async () => {
       const r = await fetch("/api/health", { cache: "no-store" });
       if (!r.ok) throw new Error("offline");
@@ -27,6 +32,8 @@ export function useServerOnline() {
     refetchInterval: 15_000,
     retry: 1,
   });
+  const cloud = useSelectedServer(CLOUD);
+  if (CLOUD) return { online: cloud.online, checking: cloud.servers.isLoading, version: cloud.current?.version ?? undefined };
   return { online: q.isSuccess && !q.isError, checking: q.isLoading, version: q.data?.version };
 }
 

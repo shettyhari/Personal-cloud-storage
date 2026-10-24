@@ -16,8 +16,8 @@ from starlette.routing import Route
 from . import __version__, db, settings_store
 from .config import get_config
 from .paths import NotFound, PathError
-from .routers import (admin_routes, ai_routes, auth_routes, devices, files, jobs_routes, mobile, storage, sync_backup,
-                      system, uploads)
+from .routers import (admin_routes, ai_routes, auth_routes, cloud, devices, files, jobs_routes, mobile, storage,
+                      sync_backup, system, uploads)
 from .security import ip_allowed, limiter
 from .services import backup as _backup, remote as _remote, sync as _sync, tasks as _tasks  # noqa: F401 - register jobs
 from .services.jobs import get_manager
@@ -108,18 +108,21 @@ def create_app(start_background: bool = True) -> FastAPI:
             monitor.start()
             get_manager().recover()
             scheduler.start()
+            cloud_link.start()
         async with mcp_server.mcp.session_manager.run():
             log.info("Personal Cloud OS %s started on %s:%s (data: %s)", __version__, cfg.host, cfg.port, cfg.data_dir)
             yield
         scheduler.stop()
+        cloud_link.stop()
         monitor.stop()
         get_manager().shutdown()
 
+    from .cloudlink.link import cloud_link
     app = FastAPI(title="Personal Cloud OS", version=__version__, lifespan=lifespan,
                   docs_url="/api/docs" if cfg.dev_mode else None, redoc_url=None,
                   openapi_url="/api/openapi.json" if cfg.dev_mode else None)
 
-    for r in (auth_routes, files, uploads, storage, devices, mobile, system, jobs_routes, ai_routes, sync_backup, admin_routes):
+    for r in (auth_routes, files, uploads, storage, devices, mobile, cloud, system, jobs_routes, ai_routes, sync_backup, admin_routes):
         app.include_router(r.router)
 
     @app.exception_handler(PathError)
@@ -171,4 +174,5 @@ def create_app(start_background: bool = True) -> FastAPI:
                            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
                            allow_headers=["content-type", "x-csrf-token", "authorization"])
     app.add_middleware(NetworkGate)
+    cloud_link.attach(app)
     return app

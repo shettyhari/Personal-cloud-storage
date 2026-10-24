@@ -9,6 +9,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, del, downloadUrl, post, qs, type FileEntry, type Root } from "@/lib/api";
+import { CLOUD } from "@/lib/cloud";
+import { cloudDownload, cloudZip } from "@/lib/cloud-transfer";
 import { bytes, cn, date } from "@/lib/format";
 import { useHotkey, useMe } from "@/lib/hooks";
 import { enqueueUploads, uploadStore } from "@/lib/uploads";
@@ -112,6 +114,14 @@ function Files() {
     setSelected(new Set()); refresh();
   };
   const downloadMany = async (list: FileEntry[]) => {
+    if (CLOUD) {
+      toast("info", "Preparing download from the server…");
+      try {
+        if (list.length === 1 && !list[0].is_dir) await cloudDownload(list[0].root_id, list[0].path);
+        else await cloudZip(list.map((i) => ({ root_id: i.root_id, path: i.path })), list.length === 1 ? list[0].name : "download");
+      } catch (e) { toast("error", (e as Error).message); }
+      return;
+    }
     if (list.length === 1 && !list[0].is_dir) { location.href = downloadUrl(list[0].root_id, list[0].path); return; }
     toast("info", "Preparing ZIP…");
     try {
@@ -291,7 +301,7 @@ function Files() {
                       <div className={cn("group relative flex flex-col overflow-hidden rounded-lg border bg-card hover:shadow-sm", selected.has(keyOf(f)) && "ring-2 ring-accent")}>
                         <input type="checkbox" className="absolute left-2 top-2 z-10 opacity-0 checked:opacity-100 group-hover:opacity-100" checked={selected.has(keyOf(f))} onChange={() => toggle(f)} aria-label={`Select ${f.name}`} />
                         <button onClick={() => open(f)} className="flex aspect-[4/3] items-center justify-center bg-muted/40">
-                          {f.kind === "image" && f.size < 15 * 1024 * 1024
+                          {!CLOUD && f.kind === "image" && f.size < 15 * 1024 * 1024
                             ? <img loading="lazy" src={downloadUrl(f.root_id, f.path, true)} alt="" className="h-full w-full object-cover" />
                             : <FileIcon kind={f.kind || kindOf(f.name, f.is_dir)} className="h-10 w-10" />}
                         </button>

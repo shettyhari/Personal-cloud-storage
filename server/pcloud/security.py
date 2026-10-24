@@ -101,12 +101,24 @@ def totp_uri(secret_b32: str, username: str, issuer: str = "Personal Cloud OS") 
 
 
 # ----------------------------------------------------- secret storage (DPAPI)
+def _restrict(path: Path, mode: int) -> None:
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
+
+
 class SecretStore:
     """Stores small secrets on disk, protected with Windows DPAPI (user scope) when available."""
 
     def __init__(self, directory: Path):
         self.directory = directory
         directory.mkdir(parents=True, exist_ok=True)
+        if sys.platform != "win32":
+            _restrict(directory, 0o700)
+            for f in directory.iterdir():
+                if f.is_file():
+                    _restrict(f, 0o600)
 
     def _path(self, name: str) -> Path:
         if not name.replace("_", "").replace("-", "").isalnum():
@@ -131,11 +143,11 @@ class SecretStore:
         else:
             data = b"PLAIN:" + value
         tmp = p.with_suffix(".tmp")
-        tmp.write_bytes(data)
-        try:
-            os.chmod(tmp, 0o600)
-        except OSError:
-            pass
+        # Create owner-only from the start so the secret is never briefly readable by others.
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        _restrict(tmp, 0o600)
         os.replace(tmp, p)
 
     def get_or_create(self, name: str, size: int = 32) -> bytes:

@@ -22,6 +22,11 @@ from .jobs import JobContext, handler
 
 CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 SCRIPT_EXTS = {".ps1", ".py", ".bat", ".cmd", ".exe"}
+_TAILSCALE_PATHS = ([r"C:\Program Files\Tailscale\tailscale.exe"] if sys.platform == "win32" else
+                    ["/usr/bin/tailscale", "/usr/local/bin/tailscale", "/usr/sbin/tailscale",
+                     "/Applications/Tailscale.app/Contents/MacOS/Tailscale"])
+_RUSTDESK_PATHS = ([r"C:\Program Files\RustDesk\rustdesk.exe"] if sys.platform == "win32" else
+                   ["/usr/bin/rustdesk", "/usr/local/bin/rustdesk"])
 _running: dict[int, subprocess.Popen] = {}
 _lock = threading.Lock()
 
@@ -130,8 +135,7 @@ def job_run_script(ctx: JobContext, p: dict):
 
 # ------------------------------------------------------------ tailscale
 def tailscale_status() -> dict:
-    exe = shutil.which("tailscale") or next((p for p in [r"C:\Program Files\Tailscale\tailscale.exe"]
-                                             if os.path.exists(p)), None)
+    exe = _tailscale_exe()
     if not exe:
         return {"installed": False}
     try:
@@ -161,7 +165,7 @@ def tailscale_status() -> dict:
 # ------------------------------------------------------- remote desktop
 def _rdp_enabled() -> bool | None:
     if sys.platform != "win32":
-        return None
+        return False  # Windows Remote Desktop does not exist off Windows
     try:
         import winreg
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Terminal Server") as k:
@@ -174,7 +178,7 @@ def remote_desktop_status() -> dict:
     cfg = settings_store.get("remote_desktop") or {}
     rustdesk_running = any((p.info.get("name") or "").lower().startswith("rustdesk")
                            for p in psutil.process_iter(["name"]))
-    rustdesk_installed = bool(shutil.which("rustdesk")) or os.path.exists(r"C:\Program Files\RustDesk\rustdesk.exe")
+    rustdesk_installed = bool(shutil.which("rustdesk")) or any(os.path.exists(p) for p in _RUSTDESK_PATHS)
     edition = None
     if sys.platform == "win32":
         try:
@@ -189,7 +193,8 @@ def remote_desktop_status() -> dict:
         "config": cfg,
         "rustdesk": {"installed": rustdesk_installed, "running": rustdesk_running},
         "rdp": {"enabled": _rdp_enabled(), "listening": rdp_listening, "windows_edition": edition,
-                "supported": edition not in (None, "Core", "CoreSingleLanguage", "Home")},
+                "supported": sys.platform == "win32" and edition not in (None, "Core", "CoreSingleLanguage", "Home")},
+        "platform": sys.platform,
     }
 
 
@@ -209,8 +214,7 @@ def rdp_file(host: str) -> str:
 
 
 def _tailscale_exe() -> str | None:
-    return shutil.which("tailscale") or next((p for p in [r"C:\Program Files\Tailscale\tailscale.exe"]
-                                              if os.path.exists(p)), None)
+    return shutil.which("tailscale") or next((p for p in _TAILSCALE_PATHS if os.path.exists(p)), None)
 
 
 def tailscale_serve_status(port: int) -> dict:

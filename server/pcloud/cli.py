@@ -7,6 +7,9 @@
     python -m pcloud.cli disable-2fa USER      local recovery if the authenticator is lost
     python -m pcloud.cli mcp-stdio             MCP over stdio for Claude Desktop (needs PCLOUD_MCP_TOKEN)
     python -m pcloud.cli stop                  ask a running supervisor to stop
+    python -m pcloud.cli link CODE [--name N]  connect this server to your hosted web dashboard
+    python -m pcloud.cli unlink                disconnect from the hosted dashboard
+    python -m pcloud.cli cloud-status          show the cloud link state
 """
 from __future__ import annotations
 
@@ -143,6 +146,48 @@ def cmd_mcp_stdio(args) -> int:
     return 0
 
 
+def cmd_link(args) -> int:
+    import socket
+    from . import db
+    from .cloudlink import config as linkcfg
+    from .cloudlink.link import enroll
+    db.migrate()
+    if linkcfg.load():
+        print("Already linked. Run `unlink` first.")
+        return 1
+    if args.user:
+        u = db.one("SELECT id FROM users WHERE username=? AND role='admin' AND disabled=0", (args.user,))
+    else:
+        u = db.one("SELECT id FROM users WHERE role='admin' AND disabled=0 ORDER BY id LIMIT 1")
+    if u is None:
+        print("No administrator account found. Finish the setup wizard first (or pass --user).")
+        return 1
+    try:
+        cfg = enroll(args.code, args.name or socket.gethostname(), u["id"])
+    except ValueError as e:
+        print(e)
+        return 1
+    print(f"Linked as '{cfg.name}' (server {cfg.server_id}). A running server connects within a minute.")
+    return 0
+
+
+def cmd_unlink(args) -> int:
+    from . import audit
+    from .cloudlink import config as linkcfg
+    cfg = linkcfg.load()
+    linkcfg.clear()
+    audit.record("system", "cli", "cloud.unlink", cfg.name if cfg else None)
+    print("Unlinked. Also remove this server in the web dashboard (Servers) to delete its cloud account.")
+    return 0
+
+
+def cmd_cloud_status(args) -> int:
+    from .cloudlink import config as linkcfg
+    cfg = linkcfg.load()
+    print(f"Linked as '{cfg.name}' to {cfg.supabase_url} (server {cfg.server_id})" if cfg else "Not linked")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="pcloud", description="Personal Cloud OS server agent")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -159,6 +204,13 @@ def main(argv=None) -> int:
     d2.add_argument("username")
     d2.set_defaults(fn=cmd_disable_2fa)
     sub.add_parser("mcp-stdio").set_defaults(fn=cmd_mcp_stdio)
+    lk = sub.add_parser("link")
+    lk.add_argument("code")
+    lk.add_argument("--name", default="")
+    lk.add_argument("--user", default="")
+    lk.set_defaults(fn=cmd_link)
+    sub.add_parser("unlink").set_defaults(fn=cmd_unlink)
+    sub.add_parser("cloud-status").set_defaults(fn=cmd_cloud_status)
     args = ap.parse_args(argv)
     return args.fn(args)
 

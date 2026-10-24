@@ -69,6 +69,25 @@ lower than a direct connection. For a self-hosted relay you can run your own DER
 - Optional: enable *Wake on LAN* in BIOS — note waking over the internet requires another always-on device on your LAN.
 - `scripts\register-service.ps1 -AtStartup` (elevated PowerShell) starts the agent at boot without signing in.
 
+## Linux VPS
+
+The agent also runs on a rented Linux server (Debian/Ubuntu/Fedora with systemd):
+
+```bash
+git clone <this repo> && cd personal-cloud
+sudo bash scripts/install-linux.sh                  # add --link <code> to link it to your cloud dashboard
+sudo bash scripts/pcloud-linux.sh status            # also: logs | restart | doctor | uninstall
+```
+
+- Installs to `/opt/personal-cloud`, runs as the no-login system user `pcloud` under a hardened systemd unit
+  (`NoNewPrivileges`, `ProtectSystem=strict`), data in `/var/lib/pcloud`, settings in `/etc/pcloud.env`.
+- Binds `127.0.0.1:8787` only. Reach it with `tailscale serve --bg http://127.0.0.1:8787` or an SSH tunnel
+  (`ssh -L 8787:127.0.0.1:8787 user@vps`). Never open 8787 in the VPS firewall.
+- `/srv/pcloud` is the default storage folder. System trees (`/`, `/etc`, `/usr`, `/var/lib`, `/root`, ...) and whole
+  home directories cannot be shared. To share another folder, allow writes with `sudo systemctl edit pcloud`
+  (`[Service]` / `ReadWritePaths=/path`) and restart.
+- Uninstall never deletes storage folders and asks before removing `/var/lib/pcloud`.
+
 ## Claude.ai web connectors
 
 Claude.ai's "custom connectors" are called from Anthropic's cloud and therefore need a **public** URL. Personal
